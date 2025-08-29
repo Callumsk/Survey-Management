@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ECO4 Survey CRM - UK Grant Management</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <i class="fas fa-leaf"></i>
+                    <span>ECO4 CRM</span>
+                </div>
+            </div>
+            
+            <ul class="nav-menu">
+                <li class="nav-item active" data-page="dashboard">
+                    <i class="fas fa-tachometer-alt"></i>
+                    <span>Dashboard</span>
+                </li>
+                <li class="nav-item" data-page="surveys">
+                    <i class="fas fa-clipboard-list"></i>
+                    <span>Surveys</span>
+                </li>
+                <li class="nav-item" data-page="new-survey">
+                    <i class="fas fa-plus-circle"></i>
+                    <span>New Survey</span>
+                </li>
+                <li class="nav-item" data-page="reports">
+                    <i class="fas fa-chart-bar"></i>
+                    <span>Reports</span>
+                </li>
+            </ul>
+            
+            <div class="sidebar-footer">
+                <div class="connection-status">
+                    <i class="fas fa-circle" id="connection-indicator"></i>
+                    <span id="connection-text">Connected</span>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="header">
+                <div class="header-left">
+                    <h1 id="page-title">Dashboard</h1>
+                </div>
+                <div class="header-right">
+                    <div class="search-bar">
+                        <i class="fas fa-search"></i>
+                        <input type="text" placeholder="Search surveys..." id="search-input">
+                    </div>
+                    <div class="user-menu">
+                        <i class="fas fa-user-circle"></i>
+                        <span>Surveyor</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Page Content -->
+            <div class="content">
+                <!-- Dashboard Page -->
+                <div id="dashboard-page" class="page active">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fas fa-clipboard-list"></i>
+                            </div>
+                            <div class="stat-content">
+                                <h3 id="total-surveys">0</h3>
+                                <p>Total Surveys</p>
+                            </div>
+                        </div>
+                        
+                        <div class="stat-card">
+                            <div class="stat-icon pending">
+                                <i class="fas fa-clock"></i>
+                            </div>
+                            <div class="stat-content">
+                                <h3 id="pending-surveys">0</h3>
+                                <p>Pending</p>
+                            </div>
+                        </div>
+                        
+                        <div class="stat-card">
+                            <div class="stat-icon completed">
+                                <i class="fas fa-check-circle"></i>
+                            </div>
+                            <div class="stat-content">
+                                <h3 id="completed-surveys">0</h3>
+                                <p>Completed</p>
+                            </div>
+                        </div>
+                        
+                        <div class="stat-card">
+                            <div class="stat-icon in-progress">
+                                <i class="fas fa-tools"></i>
+                            </div>
+                            <div class="stat-content">
+                                <h3 id="in-progress-surveys">0</h3>
+                                <p>In Progress</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-grid">
+                        <div class="recent-surveys">
+                            <h2>Recent Surveys</h2>
+                            <div id="recent-surveys-list" class="survey-list">
+                                <!-- Recent surveys will be populated here -->
+                            </div>
+                        </div>
+                        
+                        <div class="quick-actions">
+                            <h2>Quick Actions</h2>
+                            <div class="action-buttons">
+                                <button class="btn btn-primary" onclick="showPage('new-survey')">
+                                    <i class="fas fa-plus"></i>
+                                    New Survey
+                                </button>
+                                <button class="btn btn-secondary" onclick="showPage('surveys')">
+                                    <i class="fas fa-list"></i>
+                                    View All Surveys
+                                </button>
+                                <button class="btn btn-secondary" onclick="exportData()">
+                                    <i class="fas fa-download"></i>
+                                    Export Data
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Surveys Page -->
+                <div id="surveys-page" class="page">
+                    <div class="page-header">
+                        <div class="page-actions">
+                            <button class="btn btn-primary" onclick="showPage('new-survey')">
+                                <i class="fas fa-plus"></i>
+                                New Survey
+                            </button>
+                            <div class="filter-controls">
+                                <select id="status-filter">
+                                    <option value="">All Status</option>
+                                    <option value="pending">Pending</option>
+                                    <option value="in-progress">In Progress</option>
+                                    <option value="completed">Completed</option>
+                                    <option value="cancelled">Cancelled</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="surveys-table-container">
+                        <table class="surveys-table">
+                            <thead>
+                                <tr>
+                                    <th>Customer</th>
+                                    <th>Property Address</th>
+                                    <th>Survey Date</th>
+                                    <th>Surveyor</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="surveys-table-body">
+                                <!-- Surveys will be populated here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- New Survey Page -->
+                <div id="new-survey-page" class="page">
+                    <div class="page-header">
+                        <h2>Create New Survey</h2>
+                    </div>
+                    
+                    <form id="new-survey-form" class="survey-form">
+                        <div class="form-grid">
+                            <div class="form-section">
+                                <h3>Customer Information</h3>
+                                <div class="form-group">
+                                    <label for="customer-name">Customer Name *</label>
+                                    <input type="text" id="customer-name" name="customer_name" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="customer-email">Email</label>
+                                    <input type="email" id="customer-email" name="customer_email">
+                                </div>
+                                <div class="form-group">
+                                    <label for="customer-phone">Phone</label>
+                                    <input type="tel" id="customer-phone" name="customer_phone">
+                                </div>
+                            </div>
+                            
+                            <div class="form-section">
+                                <h3>Property Information</h3>
+                                <div class="form-group">
+                                    <label for="property-address">Property Address *</label>
+                                    <textarea id="property-address" name="property_address" required></textarea>
+                                </div>
+                                <div class="form-group">
+                                    <label for="property-type">Property Type</label>
+                                    <select id="property-type" name="property_type">
+                                        <option value="">Select Property Type</option>
+                                        <option value="detached">Detached House</option>
+                                        <option value="semi-detached">Semi-Detached House</option>
+                                        <option value="terraced">Terraced House</option>
+                                        <option value="flat">Flat/Apartment</option>
+                                        <option value="bungalow">Bungalow</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="current-heating">Current Heating System</label>
+                                    <select id="current-heating" name="current_heating_system">
+                                        <option value="">Select Heating System</option>
+                                        <option value="gas-boiler">Gas Boiler</option>
+                                        <option value="oil-boiler">Oil Boiler</option>
+                                        <option value="electric">Electric Heating</option>
+                                        <option value="heat-pump">Heat Pump</option>
+                                        <option value="storage-heaters">Storage Heaters</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div class="form-section">
+                                <h3>Survey Details</h3>
+                                <div class="form-group">
+                                    <label for="survey-date">Survey Date</label>
+                                    <input type="date" id="survey-date" name="survey_date">
+                                </div>
+                                <div class="form-group">
+                                    <label for="surveyor-name">Surveyor Name</label>
+                                    <input type="text" id="surveyor-name" name="surveyor_name">
+                                </div>
+                                <div class="form-group">
+                                    <label for="survey-notes">Notes</label>
+                                    <textarea id="survey-notes" name="notes" rows="4"></textarea>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="form-actions">
+                            <button type="button" class="btn btn-secondary" onclick="showPage('surveys')">Cancel</button>
+                            <button type="submit" class="btn btn-primary">Create Survey</button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Survey Detail Modal -->
+                <div id="survey-modal" class="modal">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h2 id="modal-title">Survey Details</h2>
+                            <button class="modal-close" onclick="closeModal()">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                        <div class="modal-body" id="modal-body">
+                            <!-- Survey details will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
