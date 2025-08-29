@@ -4,7 +4,7 @@ const socketIo = require('socket.io');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
-const sqlite3 = require('sqlite3').verbose();
+const Database = require('better-sqlite3');
 const { v4: uuidv4 } = require('uuid');
 const moment = require('moment');
 
@@ -20,270 +20,217 @@ const io = socketIo(server, {
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Database setup
-const db = new sqlite3.Database('./eco4_surveys.db', (err) => {
-  if (err) {
-    console.error('Error opening database:', err.message);
-  } else {
-    console.log('Connected to SQLite database');
-    initDatabase();
-  }
-});
+let db;
 
-// Initialize database tables
 function initDatabase() {
-  db.serialize(() => {
-    // Surveys table
-    db.run(`CREATE TABLE IF NOT EXISTS surveys (
-      id TEXT PRIMARY KEY,
-      customer_name TEXT NOT NULL,
-      customer_email TEXT,
-      customer_phone TEXT,
-      property_address TEXT NOT NULL,
-      property_type TEXT,
-      current_heating_system TEXT,
-      survey_date TEXT,
-      surveyor_name TEXT,
-      status TEXT DEFAULT 'pending',
-      notes TEXT,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-    )`);
+  try {
+    // Use a writable path for Railway
+    const dbPath = process.env.NODE_ENV === 'production' 
+      ? '/tmp/eco4_surveys.db' 
+      : path.join(__dirname, 'eco4_surveys.db');
+    
+    db = new Database(dbPath);
+    
+    // Create tables if they don't exist
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS surveys (
+        id TEXT PRIMARY KEY,
+        customer_name TEXT NOT NULL,
+        property_address TEXT NOT NULL,
+        property_type TEXT NOT NULL,
+        heating_system TEXT NOT NULL,
+        survey_date TEXT NOT NULL,
+        status TEXT DEFAULT 'pending',
+        notes TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
 
-    // Survey details table
-    db.run(`CREATE TABLE IF NOT EXISTS survey_details (
-      id TEXT PRIMARY KEY,
-      survey_id TEXT,
-      room_name TEXT,
-      room_type TEXT,
-      current_insulation TEXT,
-      recommended_improvements TEXT,
-      estimated_cost REAL,
-      potential_savings REAL,
-      FOREIGN KEY (survey_id) REFERENCES surveys (id)
-    )`);
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS survey_details (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        survey_id TEXT NOT NULL,
+        detail_type TEXT NOT NULL,
+        detail_value TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (survey_id) REFERENCES surveys (id)
+      )
+    `);
 
-    // Users table for authentication
-    db.run(`CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY,
-      username TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      role TEXT DEFAULT 'surveyor',
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    )`);
-
-    console.log('Database tables initialized');
-  });
+    console.log('Database initialized successfully');
+  } catch (error) {
+    console.error('Database initialization error:', error);
+    process.exit(1);
+  }
 }
 
 // API Routes
 
 // Get all surveys
 app.get('/api/surveys', (req, res) => {
-  db.all(`SELECT * FROM surveys ORDER BY created_at DESC`, (err, rows) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-    res.json(rows);
-  });
+  try {
+    const stmt = db.prepare(`SELECT * FROM surveys ORDER BY created_at DESC`);
+    const surveys = stmt.all();
+    res.json(surveys);
+  } catch (error) {
+    console.error('Error fetching surveys:', error);
+    res.status(500).json({ error: 'Failed to fetch surveys' });
+  }
 });
 
 // Get single survey with details
 app.get('/api/surveys/:id', (req, res) => {
-  const surveyId = req.params.id;
-  
-  db.get(`SELECT * FROM surveys WHERE id = ?`, [surveyId], (err, survey) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
+  try {
+    const surveyId = req.params.id;
     
+    const surveyStmt = db.prepare(`SELECT * FROM surveys WHERE id = ?`);
+    const survey = surveyStmt.get(surveyId);
+
     if (!survey) {
       res.status(404).json({ error: 'Survey not found' });
       return;
     }
 
-    db.all(`SELECT * FROM survey_details WHERE survey_id = ?`, [surveyId], (err, details) => {
-      if (err) {
-        res.status(500).json({ error: err.message });
-        return;
-      }
-      
-      res.json({ survey, details });
-    });
-  });
+    const detailsStmt = db.prepare(`SELECT * FROM survey_details WHERE survey_id = ?`);
+    const details = detailsStmt.all(surveyId);
+    
+    res.json({ survey, details });
+  } catch (error) {
+    console.error('Error fetching survey:', error);
+    res.status(500).json({ error: 'Failed to fetch survey' });
+  }
 });
 
 // Create new survey
 app.post('/api/surveys', (req, res) => {
-  const surveyId = uuidv4();
-  const {
-    customer_name,
-    customer_email,
-    customer_phone,
-    property_address,
-    property_type,
-    current_heating_system,
-    survey_date,
-    surveyor_name,
-    notes
-  } = req.body;
+  try {
+    const surveyId = uuidv4();
+    const {
+      customer_name, property_address, property_type, heating_system, survey_date, notes
+    } = req.body;
 
-  const sql = `INSERT INTO surveys (
-    id, customer_name, customer_email, customer_phone, property_address,
-    property_type, current_heating_system, survey_date, surveyor_name, notes
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    const stmt = db.prepare(`INSERT INTO surveys (
+      id, customer_name, property_address, property_type, heating_system, survey_date, notes
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)`);
 
-  db.run(sql, [
-    surveyId, customer_name, customer_email, customer_phone, property_address,
-    property_type, current_heating_system, survey_date, surveyor_name, notes
-  ], function(err) {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
+    stmt.run(
+      surveyId, customer_name, property_address, property_type, heating_system, survey_date, notes
+    );
     
     // Emit real-time update to all connected clients
     io.emit('survey_created', { id: surveyId, message: 'New survey created' });
     
     res.json({ id: surveyId, message: 'Survey created successfully' });
-  });
+  } catch (error) {
+    console.error('Error creating survey:', error);
+    res.status(500).json({ error: 'Failed to create survey' });
+  }
 });
 
 // Update survey
 app.put('/api/surveys/:id', (req, res) => {
-  const surveyId = req.params.id;
-  const {
-    customer_name,
-    customer_email,
-    customer_phone,
-    property_address,
-    property_type,
-    current_heating_system,
-    survey_date,
-    surveyor_name,
-    status,
-    notes
-  } = req.body;
+  try {
+    const surveyId = req.params.id;
+    const {
+      customer_name, property_address, property_type, heating_system, survey_date, status, notes
+    } = req.body;
 
-  const sql = `UPDATE surveys SET 
-    customer_name = ?, customer_email = ?, customer_phone = ?, property_address = ?,
-    property_type = ?, current_heating_system = ?, survey_date = ?, surveyor_name = ?,
-    status = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?`;
+    const stmt = db.prepare(`UPDATE surveys SET 
+      customer_name = ?, property_address = ?, property_type = ?, heating_system = ?,
+      survey_date = ?, status = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?`);
 
-  db.run(sql, [
-    customer_name, customer_email, customer_phone, property_address,
-    property_type, current_heating_system, survey_date, surveyor_name,
-    status, notes, surveyId
-  ], function(err) {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
+    stmt.run(
+      customer_name, property_address, property_type, heating_system,
+      survey_date, status, notes, surveyId
+    );
     
     // Emit real-time update
     io.emit('survey_updated', { id: surveyId, message: 'Survey updated' });
     
     res.json({ message: 'Survey updated successfully' });
-  });
+  } catch (error) {
+    console.error('Error updating survey:', error);
+    res.status(500).json({ error: 'Failed to update survey' });
+  }
 });
 
 // Delete survey
 app.delete('/api/surveys/:id', (req, res) => {
-  const surveyId = req.params.id;
-  
-  db.run(`DELETE FROM survey_details WHERE survey_id = ?`, [surveyId], (err) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
+  try {
+    const surveyId = req.params.id;
     
-    db.run(`DELETE FROM surveys WHERE id = ?`, [surveyId], function(err) {
-      if (err) {
-        res.status(500).json({ error: err.message });
-        return;
-      }
-      
-      // Emit real-time update
-      io.emit('survey_deleted', { id: surveyId, message: 'Survey deleted' });
-      
-      res.json({ message: 'Survey deleted successfully' });
-    });
-  });
-});
-
-// Add survey details
-app.post('/api/surveys/:id/details', (req, res) => {
-  const surveyId = req.params.id;
-  const detailId = uuidv4();
-  const {
-    room_name,
-    room_type,
-    current_insulation,
-    recommended_improvements,
-    estimated_cost,
-    potential_savings
-  } = req.body;
-
-  const sql = `INSERT INTO survey_details (
-    id, survey_id, room_name, room_type, current_insulation,
-    recommended_improvements, estimated_cost, potential_savings
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
-
-  db.run(sql, [
-    detailId, surveyId, room_name, room_type, current_insulation,
-    recommended_improvements, estimated_cost, potential_savings
-  ], function(err) {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
+    const deleteDetailsStmt = db.prepare(`DELETE FROM survey_details WHERE survey_id = ?`);
+    const deleteSurveyStmt = db.prepare(`DELETE FROM surveys WHERE id = ?`);
+    
+    deleteDetailsStmt.run(surveyId);
+    deleteSurveyStmt.run(surveyId);
     
     // Emit real-time update
-    io.emit('survey_detail_added', { surveyId, detailId, message: 'Survey detail added' });
+    io.emit('survey_deleted', { id: surveyId, message: 'Survey deleted' });
     
-    res.json({ id: detailId, message: 'Survey detail added successfully' });
-  });
+    res.json({ message: 'Survey deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting survey:', error);
+    res.status(500).json({ error: 'Failed to delete survey' });
+  }
 });
+
+  // Add survey details
+  app.post('/api/surveys/:id/details', (req, res) => {
+    try {
+      const surveyId = req.params.id;
+      const {
+        detail_type,
+        detail_value
+      } = req.body;
+
+      const stmt = db.prepare(`INSERT INTO survey_details (
+        survey_id, detail_type, detail_value
+      ) VALUES (?, ?, ?)`);
+
+      const result = stmt.run(surveyId, detail_type, detail_value);
+
+      // Emit real-time update
+      io.emit('survey_detail_added', { surveyId, detailId: result.lastInsertRowid, message: 'Survey detail added' });
+
+      res.json({ id: result.lastInsertRowid, message: 'Survey detail added successfully' });
+    } catch (error) {
+      console.error('Error adding survey detail:', error);
+      res.status(500).json({ error: 'Failed to add survey detail' });
+    }
+  });
 
 // Get dashboard statistics
 app.get('/api/dashboard', (req, res) => {
-  const stats = {};
-  
-  // Total surveys
-  db.get(`SELECT COUNT(*) as total FROM surveys`, (err, row) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-    stats.totalSurveys = row.total;
+  try {
+    const stats = {
+      totalSurveys: 0,
+      byStatus: [],
+      recentSurveys: []
+    };
+    
+    // Total surveys
+    const totalSurveysStmt = db.prepare(`SELECT COUNT(*) as total FROM surveys`);
+    const totalSurveys = totalSurveysStmt.get();
+    stats.totalSurveys = totalSurveys.total;
     
     // Surveys by status
-    db.all(`SELECT status, COUNT(*) as count FROM surveys GROUP BY status`, (err, rows) => {
-      if (err) {
-        res.status(500).json({ error: err.message });
-        return;
-      }
-      stats.byStatus = rows;
-      
-      // Recent surveys
-      db.all(`SELECT * FROM surveys ORDER BY created_at DESC LIMIT 5`, (err, recent) => {
-        if (err) {
-          res.status(500).json({ error: err.message });
-          return;
-        }
-        stats.recentSurveys = recent;
-        
-        res.json(stats);
-      });
-    });
-  });
-});
+    const byStatusStmt = db.prepare(`SELECT status, COUNT(*) as count FROM surveys GROUP BY status`);
+    const byStatus = byStatusStmt.all();
+    stats.byStatus = byStatus;
+    
+    // Recent surveys
+    const recentSurveysStmt = db.prepare(`SELECT * FROM surveys ORDER BY created_at DESC LIMIT 5`);
+    const recentSurveys = recentSurveysStmt.all();
+    stats.recentSurve URL: `https://your-app-name.railway.app`
+
+// Initialize database
+initDatabase();
 
 // Socket.IO connection handling
 io.on('connection', (socket) => {
